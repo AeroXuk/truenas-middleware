@@ -108,6 +108,8 @@ class S3Provider(TrueCloudProvider):
                 )
             raise CallError(
                 f"S3 validation failed for bucket {attrs['bucket']!r}: {exc}",
+                # errno.EREMOTEIO is Linux-specific (available on TrueNAS/FreeBSD
+                # via libc extension); fall back to errno.EIO on other platforms.
                 errno.EREMOTEIO if hasattr(errno, "EREMOTEIO") else errno.EIO,
             )
         except botocore.exceptions.EndpointResolutionError as exc:

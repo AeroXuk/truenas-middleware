@@ -12,7 +12,7 @@ from middlewared.common.attachment import LockableFSAttachmentDelegate
 from middlewared.plugins.cloud.crud import CloudTaskServiceMixin
 from middlewared.plugins.cloud.model import CloudTaskModelMixin
 from middlewared.plugins.cloud_backup.providers import get_provider
-from middlewared.service import private, TaskPathService, ValidationErrors
+from middlewared.service import CallError, private, TaskPathService, ValidationErrors
 import middlewared.sqlalchemy as sa
 from middlewared.utils.cron import convert_db_format_to_schedule, convert_schedule_to_db_format
 from middlewared.utils.path import FSLocation
@@ -182,7 +182,16 @@ class CloudBackupService(TaskPathService, CloudTaskServiceMixin, TaskStateMixin)
                 # Provider-level connectivity / access validation.
                 try:
                     provider.validate(resolved)
+                except CallError as exc:
+                    # CallError already contains a structured, actionable message.
+                    verrors.add(f"{name}.credentials", exc.errmsg)
                 except Exception as exc:
+                    # Unexpected errors are logged so they can be debugged.
+                    self.logger.error(
+                        "Unexpected error during provider validation for credential type %r",
+                        credential_type,
+                        exc_info=True,
+                    )
                     verrors.add(f"{name}.credentials", str(exc))
 
         if not verrors:

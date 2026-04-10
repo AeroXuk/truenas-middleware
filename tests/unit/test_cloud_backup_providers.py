@@ -332,6 +332,7 @@ class TestS3Provider(unittest.TestCase):
                 provider.validate(self._make_task(bucket="private-bucket"))
 
             self.assertIn("Access denied", str(ctx.exception))
+            self.assertEqual(ctx.exception.errno, errno.EACCES)
 
     def test_validate_bucket_not_found_raises_callError(self):
         """validate() should raise CallError with errno.ENOENT on 404."""
@@ -356,6 +357,7 @@ class TestS3Provider(unittest.TestCase):
                 provider.validate(self._make_task(bucket="missing-bucket"))
 
             self.assertIn("does not exist", str(ctx.exception))
+            self.assertEqual(ctx.exception.errno, errno.ENOENT)
 
     def test_validate_skips_when_boto3_unavailable(self):
         """validate() should not raise if boto3 is not installed."""
