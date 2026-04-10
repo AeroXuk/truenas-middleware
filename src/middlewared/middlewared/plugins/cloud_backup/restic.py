@@ -17,18 +17,42 @@ class ResticConfig:
 
 
 def get_restic_config(cloud_backup):
-    remote = REMOTES[cloud_backup["credentials"]["provider"]["type"]]
+    """Build a :class:`ResticConfig` for the given cloud backup task.
 
-    remote_path = get_remote_path(remote, cloud_backup["attributes"])
+    When the credential's provider type is registered in the TrueCloud
+    provider abstraction (``plugins/cloud_backup/providers``), the provider
+    adapter is used to generate the repository URL and environment.  For all
+    other credential types the legacy rclone-remote path is used as a
+    fallback so that any provider supported by rclone can still be wired up
+    without a dedicated adapter.
+    """
+    credential_type = cloud_backup["credentials"]["provider"]["type"]
 
-    url, env = remote.get_restic_config(cloud_backup)
+    # Attempt to use the provider abstraction introduced for multi-provider
+    # TrueCloud support.  A ``None`` middleware reference is acceptable here
+    # because ``get_restic_config`` is called both from within a service
+    # (where middleware is available) and from standalone helper functions.
+    # Providers that need middleware will receive it via the service layer.
+    from middlewared.plugins.cloud_backup.providers import get_provider
+    provider = get_provider(credential_type, middleware=None)
+
+    if provider is not None:
+        repo_config = provider.get_restic_config(cloud_backup)
+        url = repo_config.url
+        env = repo_config.env
+    else:
+        # Legacy fallback: use the rclone remote directly.
+        remote = REMOTES[credential_type]
+        remote_path = get_remote_path(remote, cloud_backup["attributes"])
+        legacy_url, env = remote.get_restic_config(cloud_backup)
+        url = f"{remote.rclone_type}:{legacy_url}/{remote_path}"
 
     if cloud_backup["cache_path"]:
         cache = ["--cache-dir", cloud_backup["cache_path"]]
     else:
         cache = ["--no-cache"]
 
-    cmd = ["restic"] + cache + ["--json", "-r", f"{remote.rclone_type}:{url}/{remote_path}"]
+    cmd = ["restic"] + cache + ["--json", "-r", url]
 
     env["RESTIC_PASSWORD"] = cloud_backup["password"]
 

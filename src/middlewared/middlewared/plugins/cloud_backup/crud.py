@@ -11,6 +11,7 @@ from middlewared.api.current import (
 from middlewared.common.attachment import LockableFSAttachmentDelegate
 from middlewared.plugins.cloud.crud import CloudTaskServiceMixin
 from middlewared.plugins.cloud.model import CloudTaskModelMixin
+from middlewared.plugins.cloud_backup.providers import get_provider
 from middlewared.service import private, TaskPathService, ValidationErrors
 import middlewared.sqlalchemy as sa
 from middlewared.utils.cron import convert_db_format_to_schedule, convert_schedule_to_db_format
@@ -163,6 +164,26 @@ class CloudBackupService(TaskPathService, CloudTaskServiceMixin, TaskStateMixin)
                 statfs = self.middleware.call_sync("filesystem.statfs", data["cache_path"])
                 if "RO" in statfs["flags"]:
                     verrors.add(f"{name}.cache_path", "The cache directory must be writeable")
+
+        if not verrors:
+            # Resolve credentials so the provider adapter receives the full dict.
+            resolved = data
+            if isinstance(data.get("credentials"), int):
+                resolved = {
+                    **data,
+                    "credentials": self.middleware.call_sync(
+                        "cloudsync.credentials.get_instance", data["credentials"]
+                    ),
+                }
+
+            credential_type = resolved["credentials"]["provider"]["type"]
+            provider = get_provider(credential_type, self.middleware)
+            if provider is not None:
+                # Provider-level connectivity / access validation.
+                try:
+                    provider.validate(resolved)
+                except Exception as exc:
+                    verrors.add(f"{name}.credentials", str(exc))
 
         if not verrors:
             try:
