@@ -5,7 +5,6 @@ import subprocess
 import threading
 
 from middlewared.job import JobCancelledException, JobProgressBuffer
-from middlewared.plugins.cloud.path import get_remote_path
 from middlewared.plugins.cloud.remotes import REMOTES
 from middlewared.service import CallError
 
@@ -17,10 +16,13 @@ class ResticConfig:
 
 
 def get_restic_config(cloud_backup):
-    remote = REMOTES[cloud_backup["credentials"]["provider"]["type"]]
+    """Build a :class:`ResticConfig` for the given cloud backup task.
 
-    remote_path = get_remote_path(remote, cloud_backup["attributes"])
-
+    Dispatches to the rclone remote for the credential type, which returns
+    the complete restic repository URL and any required environment variables.
+    """
+    credential_type = cloud_backup["credentials"]["provider"]["type"]
+    remote = REMOTES[credential_type]
     url, env = remote.get_restic_config(cloud_backup)
 
     if cloud_backup["cache_path"]:
@@ -28,7 +30,7 @@ def get_restic_config(cloud_backup):
     else:
         cache = ["--no-cache"]
 
-    cmd = ["restic"] + cache + ["--json", "-r", f"{remote.rclone_type}:{url}/{remote_path}"]
+    cmd = ["restic"] + cache + ["--json", "-r", url]
 
     env["RESTIC_PASSWORD"] = cloud_backup["password"]
 

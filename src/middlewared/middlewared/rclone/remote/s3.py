@@ -75,16 +75,24 @@ class S3RcloneRemote(BaseRcloneRemote):
         return result
 
     def get_restic_config(self, task):
-        url = task["credentials"]["provider"].get("endpoint", "").rstrip("/")
-        if not url:
-            if region := task["attributes"].get("region") or task["credentials"]["provider"].get("region"):
-                url = f"s3.{region}.amazonaws.com"
-            else:
-                url = "s3.amazonaws.com"
+        from middlewared.plugins.cloud.path import get_remote_path
 
+        provider = task["credentials"]["provider"]
+        attrs = task["attributes"]
+
+        endpoint = provider.get("endpoint", "").rstrip("/")
+        region = attrs.get("region") or provider.get("region", "").strip() or "us-east-1"
+        if not endpoint:
+            if region != "us-east-1":
+                endpoint = f"s3.{region}.amazonaws.com"
+            else:
+                endpoint = "s3.amazonaws.com"
+
+        remote_path = get_remote_path(self, attrs)
         env = {
-            "AWS_ACCESS_KEY_ID": task["credentials"]["provider"]["access_key_id"],
-            "AWS_SECRET_ACCESS_KEY": task["credentials"]["provider"]["secret_access_key"],
+            "AWS_ACCESS_KEY_ID": provider["access_key_id"],
+            "AWS_SECRET_ACCESS_KEY": provider["secret_access_key"],
+            "AWS_DEFAULT_REGION": region,
         }
 
-        return url, env
+        return f"s3:{endpoint}/{remote_path}", env
