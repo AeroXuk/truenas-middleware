@@ -317,44 +317,66 @@ class TestGCSResticConfig(unittest.TestCase):
 
     def setUp(self):
         self.remote = GoogleCloudStorageRcloneRemote(middleware=None)
+        self._temp_files = []
+
+    def tearDown(self):
+        import os
+        for path in self._temp_files:
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+
+    def _get_config(self, task=None):
+        url, env = self.remote.get_restic_config(task or _gcs_task())
+        creds_file = env.get("GOOGLE_APPLICATION_CREDENTIALS")
+        if creds_file and creds_file not in self._temp_files:
+            self._temp_files.append(creds_file)
+        return url, env
 
     def test_url_starts_with_gs(self):
-        url, _ = self.remote.get_restic_config(_gcs_task())
+        url, _ = self._get_config(_gcs_task())
         self.assertTrue(url.startswith("gs:"), url)
 
     def test_url_contains_bucket(self):
-        url, _ = self.remote.get_restic_config(_gcs_task(bucket="gcsbucket"))
+        url, _ = self._get_config(_gcs_task(bucket="gcsbucket"))
         self.assertIn("gcsbucket", url)
 
     def test_url_contains_folder(self):
-        url, _ = self.remote.get_restic_config(_gcs_task(folder="resticdata"))
+        url, _ = self._get_config(_gcs_task(folder="resticdata"))
         self.assertIn("resticdata", url)
 
     def test_url_format_bucket_colon_path(self):
-        url, _ = self.remote.get_restic_config(_gcs_task(bucket="bkt", folder="sub"))
+        url, _ = self._get_config(_gcs_task(bucket="bkt", folder="sub"))
         self.assertEqual(url, "gs:bkt:/sub")
 
     def test_url_root_when_no_folder(self):
-        url, _ = self.remote.get_restic_config(_gcs_task(folder=""))
+        url, _ = self._get_config(_gcs_task(folder=""))
         self.assertEqual(url, "gs:gcsbucket:/")
 
     def test_env_has_application_credentials_path(self):
         import os
-        _, env = self.remote.get_restic_config(_gcs_task())
+        _, env = self._get_config()
         self.assertIn("GOOGLE_APPLICATION_CREDENTIALS", env)
         self.assertTrue(os.path.isfile(env["GOOGLE_APPLICATION_CREDENTIALS"]))
 
     def test_env_has_project_id(self):
-        _, env = self.remote.get_restic_config(_gcs_task())
+        _, env = self._get_config()
         self.assertIn("GOOGLE_PROJECT_ID", env)
         self.assertEqual(env["GOOGLE_PROJECT_ID"], "my-project")
 
     def test_credentials_file_contains_valid_json(self):
         import json
-        _, env = self.remote.get_restic_config(_gcs_task())
+        _, env = self._get_config()
         with open(env["GOOGLE_APPLICATION_CREDENTIALS"]) as f:
             data = json.load(f)
         self.assertEqual(data["project_id"], "my-project")
+
+    def test_repeated_calls_reuse_same_file(self):
+        _, env1 = self._get_config()
+        _, env2 = self._get_config()
+        self.assertEqual(env1["GOOGLE_APPLICATION_CREDENTIALS"],
+                         env2["GOOGLE_APPLICATION_CREDENTIALS"])
 
 
 # ---------------------------------------------------------------------------
