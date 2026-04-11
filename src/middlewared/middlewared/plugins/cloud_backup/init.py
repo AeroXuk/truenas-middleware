@@ -1,5 +1,6 @@
 import subprocess
 
+from middlewared.plugins.cloud.remotes import REMOTES
 from middlewared.plugins.cloud_backup.restic import get_restic_config
 from middlewared.service import CallError, Service, private
 
@@ -28,9 +29,11 @@ class CloudBackupService(Service):
         attrs = cloud_backup["attributes"]
         cred = cloud_backup["credentials"]["id"]
         if "bucket" in attrs:
-            existing_buckets = [b["Name"] for b in self.middleware.call_sync("cloudsync.list_buckets", cred)]
-            if attrs["bucket"] not in existing_buckets:
-                self.middleware.call_sync("cloudsync.create_bucket", cred, attrs["bucket"])
+            remote = REMOTES[cloud_backup["credentials"]["provider"]["type"]]
+            if remote.can_create_bucket:
+                existing_buckets = [b["Name"] for b in self.middleware.call_sync("cloudsync.list_buckets", cred)]
+                if attrs["bucket"] not in existing_buckets:
+                    self.middleware.call_sync("cloudsync.create_bucket", cred, attrs["bucket"])
 
         restic_config = get_restic_config(cloud_backup)
 

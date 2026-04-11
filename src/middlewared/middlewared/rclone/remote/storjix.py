@@ -87,9 +87,13 @@ class StorjIxRcloneRemote(BaseRcloneRemote):
         }
 
     def get_restic_config(self, task):
+        from middlewared.plugins.cloud.path import get_remote_path
+
         provider = task["credentials"]["provider"]
+        remote_path = get_remote_path(self, task["attributes"])
+        hostname = urlparse(provider["endpoint"]).hostname
         env = {
             "AWS_ACCESS_KEY_ID": provider["access_key_id"],
             "AWS_SECRET_ACCESS_KEY": provider["secret_access_key"],
         }
-        return urlparse(provider["endpoint"]).hostname, env
+        return f"s3:{hostname}/{remote_path}", env

@@ -5,7 +5,6 @@ import subprocess
 import threading
 
 from middlewared.job import JobCancelledException, JobProgressBuffer
-from middlewared.plugins.cloud.path import get_remote_path
 from middlewared.plugins.cloud.remotes import REMOTES
 from middlewared.service import CallError
 
@@ -19,33 +18,12 @@ class ResticConfig:
 def get_restic_config(cloud_backup):
     """Build a :class:`ResticConfig` for the given cloud backup task.
 
-    When the credential's provider type is registered in the TrueCloud
-    provider abstraction (``plugins/cloud_backup/providers``), the provider
-    adapter is used to generate the repository URL and environment.  For all
-    other credential types the legacy rclone-remote path is used as a
-    fallback so that any provider supported by rclone can still be wired up
-    without a dedicated adapter.
+    Dispatches to the rclone remote for the credential type, which returns
+    the complete restic repository URL and any required environment variables.
     """
     credential_type = cloud_backup["credentials"]["provider"]["type"]
-
-    # Attempt to use the provider abstraction introduced for multi-provider
-    # TrueCloud support.  A ``None`` middleware reference is acceptable here
-    # because ``get_restic_config`` is called both from within a service
-    # (where middleware is available) and from standalone helper functions.
-    # Providers that need middleware will receive it via the service layer.
-    from middlewared.plugins.cloud_backup.providers import get_provider
-    provider = get_provider(credential_type, middleware=None)
-
-    if provider is not None:
-        repo_config = provider.get_restic_config(cloud_backup)
-        url = repo_config.url
-        env = repo_config.env
-    else:
-        # Legacy fallback: use the rclone remote directly.
-        remote = REMOTES[credential_type]
-        remote_path = get_remote_path(remote, cloud_backup["attributes"])
-        legacy_url, env = remote.get_restic_config(cloud_backup)
-        url = f"{remote.rclone_type}:{legacy_url}/{remote_path}"
+    remote = REMOTES[credential_type]
+    url, env = remote.get_restic_config(cloud_backup)
 
     if cloud_backup["cache_path"]:
         cache = ["--cache-dir", cloud_backup["cache_path"]]

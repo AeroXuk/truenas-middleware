@@ -30,3 +30,15 @@ class B2RcloneRemote(BaseRcloneRemote):
             return [f"--multi-thread-cutoff={chunk_size * 2 + 1}M"]
 
         return []
+
+    def get_restic_config(self, task):
+        provider = task["credentials"]["provider"]
+        attrs = task["attributes"]
+        bucket = attrs["bucket"]
+        folder = attrs.get("folder", "").strip("/")
+        path = f"/{folder}" if folder else "/"
+        env = {
+            "B2_ACCOUNT_ID": provider["account"],
+            "B2_ACCOUNT_KEY": provider["key"],
+        }
+        return f"b2:{bucket}:{path}", env
